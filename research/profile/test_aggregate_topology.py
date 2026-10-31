@@ -1,6 +1,7 @@
 """Aggregate discovery and metadata are synthetic evidence, never hardware approval."""
 import importlib.util
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,59 @@ def inspect(text, mutate=None):
 
 
 class AggregateTopologyTests(unittest.TestCase):
+    def assert_fixture_result(self,text,accepted):
+        with tempfile.TemporaryDirectory() as folder:
+            source=Path(folder)/'DIAG00.TXT';target=Path(folder)/'fixture.h'
+            source.write_text(text,encoding='ascii')
+            done=subprocess.run([sys.executable,'-I',str(HERE.parents[1]/'internal-boot/boot/make-console-fixture.py'),
+                 str(source),'--single-rtx','--aggregate','--no-igpu','--no-edid-child','--output='+str(target)],
+                 capture_output=True,text=True)
+            self.assertEqual(done.returncode,0 if accepted else 1,done.stderr)
+            self.assertEqual(target.exists(),accepted)
+
+    def test_current_collector_driver_format_and_conflicting_fields(self):
+        good=data.synthetic_capture(aggregate=True,no_edid=False)
+        row='driver image=0xe binding=0xd version=0x11 stop-address=0x70088c'
+        self.assertEqual(good.count(row),1)
+        padded=re.sub(r'0x([0-9a-f]+)',lambda m:'0x'+m[1].zfill(16),row)
+        self.assert_fixture_result(good.replace(row,padded),True)
+        variants=[row.replace('image=0xe','image=0xb'),
+                  row.replace('binding=0xd','binding=0x4'),
+                  row.replace('version=0x11','version=0x10'),
+                  row.replace('stop-address=0x70088c','stop-address=0x70088d'),
+                  row+'\n'+row,
+                  row.split(' version=')[0],
+                  row+' extra=0x1',
+                  row.replace(' version=0x11',''),
+                  row.replace(' stop-address=0x70088c','')]
+        for changed in variants:
+            with self.subTest(row=changed):
+                self.assert_fixture_result(good.replace(row,changed),False)
+
+    def test_current_collector_image_path_and_protocol_boundaries(self):
+        good=data.synthetic_capture(aggregate=True,no_edid=False)
+        block=mp.parse_handles(good)[14]['raw']
+        prefix='handle id=0xe\n'
+        metadata=next(line for line in block.splitlines() if line.startswith('image parent='))
+        first=next(line for line in block.splitlines() if line.startswith('image-file-path-node'))
+        end='path-node raw=7fff0400'
+        self.assertIn(first+'\n'+end+'\n',block)
+        extra_protocol='protocol guid=12345678-0000-0000-0000-000000000001\nopens status=0x0 count=0x0\n'
+        self.assert_fixture_result(good,True)
+        self.assert_fixture_result(good.replace(prefix+block,prefix+block+extra_protocol+end+'\n'),True)
+        variants=[block.replace(end+'\n',''),
+                  block.replace(end,'path-node raw=7f010400'),
+                  block.replace(end,end+'\n'+end),
+                  block.replace(end,'image-file-'+end),
+                  block.replace(end,'path-node raw=nothex'),
+                  block.replace(first,end+'\n'+first),
+                  block.replace(metadata,end+'\n'+metadata),
+                  block.replace(metadata+'\n','')+extra_protocol+metadata+'\n',
+                  block.replace(end+'\n','')+extra_protocol+end+'\n']
+        for index,changed in enumerate(variants):
+            with self.subTest(case=index):
+                self.assert_fixture_result(good.replace(prefix+block,prefix+changed),False)
+
     def test_aggregate_fixture_maps_combo_and_installed_protocols(self):
         for children in (1,2):
             with tempfile.TemporaryDirectory() as folder:
