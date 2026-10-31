@@ -111,11 +111,13 @@ def synthetic_capture(*, bus=0x2b, igpu=False, no_edid=True, children=2, command
     if aggregate:
         bindings.append((13,14,0x700000,0x2160,0x88c,0x11,3,mp.COMBO_FILE))
     for agent, image, base, size, stop, version, code_type, guid in bindings:
+        protocol(agent,'18a031ab-b443-4d1a-a5c0-0c09261e9f71',detail=
+                 f'driver image=0x{image:x} binding=0x{agent:x} version=0x{version:x} stop-address=0x{base+stop:x}\n')
         node = bytes.fromhex('04061400') + uuid.UUID(guid).bytes_le if guid else bytes.fromhex('04041c00') + 'nvgop-ga1xx\0'.encode('utf-16-le')
         device=1 if agent==3 else 0
         protocol(image,'5b1b31a1-9562-11d2-8e3f-00a0c969723b',detail=
                  f'image parent=0x0 device=0x{device:x} base=0x{base:x} size=0x{size:x} code-type=0x{code_type:x}\n'
-                 'image-file-path-node raw='+node.hex()+'\nimage-file-path-node raw='+END.hex()+'\n')
+                 'image-file-path-node raw='+node.hex()+'\npath-node raw='+END.hex()+'\n')
         lines += [f'binding handle=0x{agent:x} image=0x{image:x} version=0x{version:x} stop=0x{base + stop:x}',
                   f'img base=0x{base:x}', f'img size=0x{size:x}', f'img code-type=0x{code_type:x}',
                   'img-path-node raw=' + node.hex(), 'img-path-node raw=' + END.hex()]
