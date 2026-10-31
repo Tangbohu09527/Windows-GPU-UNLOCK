@@ -26,7 +26,18 @@ static void Damage(unsigned fault) {
     case 4:PhysicalMode.FrameBufferBase=0;break;
     case 5:DisplayPaths[0][17]^=1;break;
     case 6:Input.WaitForKey=NULL;break;
-    case 7:Live.Edges[0].Count++;break;
+    case 7: {
+      EDGE *target=NULL;
+      for(UINTN i=0;i<Live.Count;i++) {
+        EDGE *e=&Live.Edges[i];
+        if(e->Handle==H(PCI) && e->Agent==H(NV) && e->Controller==H(PCI) &&
+           GuGuidEqual(&e->Protocol,&PciGuid) && e->Attributes==EFI_OPEN_PROTOCOL_BY_DRIVER) {
+          Check(target==NULL,"unique NVIDIA PCI ownership fault target");target=e;
+        }
+      }
+      Check(target && target->Count==1,"NVIDIA PCI ownership fault starts with one open");
+      target->Count++;break;
+    }
     case 8:Table.StandardErrorHandle=H(PCI);break;
     case 9:Edge(PRIMARY,OBSERVER,PRIMARY,&GopGuid,EFI_OPEN_PROTOCOL_BY_DRIVER);break;
     case 15:ParentDrift=TRUE;break;
@@ -41,6 +52,8 @@ int main(void) {
     Setup();Damage(PrepareFault);
     UINTN original_count=Live.Count;
     EFI_STATUS status=GuPrepareConsole(&Table,PrepareLog,NULL);
+    if((status==EFI_SUCCESS)!=(PrepareFault==0))
+      fprintf(stderr,"prepare fault=%u status=0x%016llx\n",PrepareFault,(unsigned long long)status);
     Check((status==EFI_SUCCESS)==(PrepareFault==0),"aggregate prepare accepts only intact graph and successful durable logs");
     Check(!Calls && !EdidCalls && !NvCalls && !Enables && !Claims && !Closes,
           "prepare never detaches, enables or claims the GPU");
