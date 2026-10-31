@@ -109,9 +109,14 @@ for role, protocol, controller in [
     roles[role] = records[0][1]
     block = blocks[next(h for h, i in indices.items() if i == roles[role])]
     if aggregate:
-        observed = re.findall(r'^driver image=0x([0-9a-f]+) binding=0x([0-9a-f]+)$', block, re.M)
+        observed = [line for line in block.splitlines() if line.startswith('driver ')]
+        record = re.fullmatch(
+            r'driver image=0x([0-9a-f]{1,16}) binding=0x([0-9a-f]{1,16}) '
+            r'version=0x([0-9a-f]{1,16}) stop-address=0x([0-9a-f]{1,16})',
+            observed[0]) if len(observed) == 1 else None
         binding = profile.binding_for(observed_bindings, original[roles[role]])
-        if len(observed) != 1 or tuple(int(value, 16) for value in observed[0]) != (binding['image'], binding['handle']):
+        if record is None or tuple(int(value, 16) for value in record.groups()) != (
+                binding['image'], binding['handle'], binding['version'], binding['stop']):
             raise ValueError('Aggregate graph and binding image records disagree')
     roles[role.removesuffix('Agent') + 'Image'] = indices[hex(int(re.search(r'driver image=(0x[0-9a-f]+)', block)[1], 16))]
 console = re.search(r'console out=(0x[0-9a-f]+) error=(0x[0-9a-f]+) input=(0x[0-9a-f]+)', text)
@@ -177,13 +182,30 @@ if aggregate:
         image_block=parsed[binding['image']]
         if '5b1b31a1-9562-11d2-8e3f-00a0c969723b' not in image_block['protocols']:
             raise ValueError('Aggregate driver image interface is missing')
-        image_rows=re.findall(r'^image parent=0x([0-9a-f]{1,16}) device=0x([0-9a-f]{1,16}) base=0x([0-9a-f]{1,16}) size=0x([0-9a-f]{1,16}) code-type=0x([0-9a-f]{1,16})$',image_block['raw'],re.M)
-        if len(image_rows)!=1:
+        image_details=re.findall(
+            r'^protocol guid=5b1b31a1-9562-11d2-8e3f-00a0c969723b\n(.*?)(?=^protocol guid=|\Z)',
+            image_block['raw'],re.M|re.S)
+        image_lines=image_details[0].splitlines() if len(image_details)==1 else []
+        metadata_indices=[i for i,line in enumerate(image_lines) if line.startswith('image ')]
+        image_row=re.fullmatch(
+            r'image parent=0x([0-9a-f]{1,16}) device=0x([0-9a-f]{1,16}) base=0x([0-9a-f]{1,16}) size=0x([0-9a-f]{1,16}) code-type=0x([0-9a-f]{1,16})',
+            image_lines[metadata_indices[0]]) if len(metadata_indices)==1 else None
+        if image_row is None:
             raise ValueError('Aggregate replay requires one loaded image observation')
-        parent,device,base,size,code_type=(int(value,16) for value in image_rows[0])
+        parent,device,base,size,code_type=(int(value,16) for value in image_row.groups())
         if (base,size,code_type)!=(binding['base'],binding['size'],binding['code-type']):
             raise ValueError('Aggregate image and binding metadata disagree')
-        image_nodes=re.findall(r'^image-file-path-node raw=([0-9a-f]+)$',image_block['raw'],re.M)
+        path_starts=[i for i,line in enumerate(image_lines) if line.startswith('image-file-')]
+        if len(path_starts)!=1 or path_starts[0]!=metadata_indices[0]+1 or any(
+                line.startswith('path-node') for line in image_lines[:path_starts[0]]):
+            raise ValueError('Aggregate replay requires one image file path')
+        # The collector prefixes only the first node; restrict continuations to this protocol.
+        image_nodes=[]
+        for i,line in enumerate(image_lines[path_starts[0]:]):
+            node=re.fullmatch(('image-file-' if i==0 else '')+r'path-node raw=([0-9a-f]+)',line)
+            if node is None:
+                raise ValueError('Aggregate image file path record is malformed')
+            image_nodes.append(node[1])
         if image_nodes!=[node.hex() for node in binding['nodes']]:
             raise ValueError('Aggregate image file paths disagree')
         if device and hex(device) not in indices:
