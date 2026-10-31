@@ -233,7 +233,10 @@ static EFI_STATUS EFIAPI map_buffer(EFI_PCI_IO_PROTOCOL *p,EFI_PCI_IO_PROTOCOL_O
   CHECK(p==&pci && operation==EfiPciIoOperationBusMasterCommonBuffer);
   TEST_BUFFER *b=cpu_buffer(cpu);CHECK(*bytes==b->bytes && !b->mapped && !b->freed);
   fake.maps++;if(fake.mode==MAP_FAIL && fake.maps==1)return EFI_UNSUPPORTED;
-  b->dma=fake.next_dma;fake.next_dma+=b->bytes;CHECK(fake.next_dma<=0xffffffffULL);
+  b->dma=fake.next_dma;
+  /* Host allocations may share this low address range; keep the mock mapping nonidentity. */
+  if(b->dma==(UINT64)(UINTN)cpu)b->dma+=4096;
+  fake.next_dma=b->dma+b->bytes;CHECK(fake.next_dma<=0xffffffffULL);
   CHECK(b->dma!=(UINT64)(UINTN)cpu);b->mapped=TRUE;fake.live_maps++;
   *device_address=b->dma;*mapping=b;
   if(fake.mode==MAP_PARTIAL && fake.maps==48)*bytes/=2;
