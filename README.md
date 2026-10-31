@@ -7,6 +7,14 @@ Contributor tooling: [entry-point inventory and cleanup proposal](docs/ENTRYPOIN
 Experimental UEFI GPU unlock and direct Windows handoff, expanded through
 community contributions.
 
+This branch includes host-side fixture and test fixes used for an ASUS ROG STRIX
+Z690-E / RTX 3090 Ti LOCAL USB run. The
+[Chinese test report](docs/results/2026-10-31-rtx3090ti-minimax-h3.zh-CN.md) and
+[CSV results](docs/results/2026-10-31-rtx3090ti-minimax-h3.zh-CN.csv) record the
+environment, boot evidence and all 12 MiniMax H3 before/after timings, including
+outliers and measurement limits. The Windows/UEFI unlock core remains upstream
+work; machine-specific generated files are not included.
+
 [![Join our Discord community](https://img.shields.io/badge/Join%20Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/WjKsjEqxF)
 [![View compatibility and supported configurations](https://img.shields.io/badge/Compatibility-455A64?style=for-the-badge)](docs/COMPATIBILITY.en.md)
 [![Contribute research and improvements](https://img.shields.io/badge/Contribute-37474F?style=for-the-badge&logo=github&logoColor=white)](docs/CONTRIBUTING.en.md)
